@@ -1,7 +1,0 @@
-/vendor/
-.env
-.DS_Store
-*.log
-/build/
-composer.phar
-/node_modules/
