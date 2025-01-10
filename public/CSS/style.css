@@ -1,0 +1,24 @@
+.timeline-container {
+    position: relative;
+    height: 100px;
+    margin: 20px 0;
+    background: #f8f9fa;
+    overflow-x: auto;
+}
+
+.timeline-event {
+    position: absolute;
+    top: 20px;
+    height: 40px;
+    background: #007bff;
+    color: white;
+    padding: 5px;
+    border-radius: 4px;
+    font-size: 12px;
+    min-width: 50px;
+    text-align: center;
+}
+
+.timeline-event[data-type="IO"] {
+    background: #28a745;
+}
