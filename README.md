@@ -24,12 +24,7 @@ Interactive web-based CPU scheduling algorithm simulator.
 git clone https://github.com/Quoc-Thai-0502/LAPLICHCPU.git
 ```
 
-2. Install dependencies:
-```bash
-composer install
-```
-
-3. Start the local development server:
+2. Start the local development server:
 ```bash
 php -S localhost:8000 -t public
 ```
