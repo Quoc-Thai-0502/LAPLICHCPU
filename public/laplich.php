@@ -248,7 +248,7 @@
         }
 
         // Định nghĩa hàm tính toán lịch trình FCFS, nhận tham số là mảng các tiến trình
-function calculateFCFS($processes) {
+        function calculateFCFS($processes) {
     // Sắp xếp các tiến trình theo thời gian đến (arrival_time) tăng dần
     usort($processes, function($a, $b) {
         return $a['arrival_time'] - $b['arrival_time'];
@@ -305,370 +305,394 @@ function calculateFCFS($processes) {
     return $results;
 }
         function calculateSJF($processes) {
-            $currentTime = 0;
-            $completed = [];
-            $results = [];
-            $readyQueue = [];
-            $blockedQueue = [];
-            
-            // Add safety counter to prevent infinite loops
-            $safetyCounter = 0;
-            $maxIterations = 1000; // Adjust based on your needs
-            
-            while (count($completed) < count($processes)) {
-                $safetyCounter++;
-                if ($safetyCounter > $maxIterations) {
-                    break; // Emergency exit if loop runs too long
-                }
-                
-                // Update ready queue with arrived processes
-                foreach ($processes as $process) {
-                    if (!in_array($process['pid'], $completed) && 
-                        $process['arrival_time'] <= $currentTime &&
-                        !in_array($process['pid'], array_column($readyQueue, 'pid')) &&
-                        !in_array($process['pid'], array_column($blockedQueue, 'pid'))) {
-                        // Add remaining burst time calculation
-                        $remainingBurst = $process['burst_time'];
-                        foreach ($results as $result) {
-                            if ($result['pid'] === $process['pid']) {
-                                $remainingBurst -= ($currentTime - $result['start_time']);
-                            }
-                        }
-                        if ($remainingBurst > 0) {
-                            $process['burst_time'] = $remainingBurst;
-                            $readyQueue[] = $process;
-                        }
-                    }
-                }
-                
-                // Check and update blocked queue
-                if (!empty($blockedQueue)) {
-                    foreach ($blockedQueue as $key => $blocked) {
-                        if ($currentTime >= $blocked['io_end']) {
-                            $readyQueue[] = [
-                                'pid' => $blocked['pid'],
-                                'burst_time' => $blocked['remaining_burst'],
-                                'arrival_time' => $blocked['io_end'],
-                                'io_time' => 0, // Reset I/O time after it's done
-                                'io_burst_time' => 0
-                            ];
-                            unset($blockedQueue[$key]);
-                        }
-                    }
-                    $blockedQueue = array_values($blockedQueue); // Reindex array
-                }
-                
-                // If no process in ready queue, increment time and continue
-                if (empty($readyQueue)) {
-                    $currentTime++;
-                    continue;
-                }
-                
-                // Sort by burst time (SJF logic)
-                usort($readyQueue, function($a, $b) {
-                    if ($a['burst_time'] == $b['burst_time']) {
-                        return $a['arrival_time'] - $b['arrival_time']; // Secondary sort by arrival time
-                    }
-                    return $a['burst_time'] - $b['burst_time'];
-                });
-                
-                $process = array_shift($readyQueue);
-                $originalProcess = null;
-                foreach ($processes as $p) {
-                    if ($p['pid'] === $process['pid']) {
-                        $originalProcess = $p;
-                        break;
-                    }
-                }
-                
-                // Handle I/O
-                if ($originalProcess['io_time'] > 0 && 
-                    $originalProcess['io_burst_time'] > 0 && 
-                    !in_array($process['pid'], $completed)) {
-                    
-                    $ioStart = $currentTime + $originalProcess['io_time'];
-                    $ioEnd = $ioStart + $originalProcess['io_burst_time'];
-                    $remainingBurst = $originalProcess['burst_time'] - $originalProcess['io_time'];
-                    
-                    if ($remainingBurst > 0) {
-                        $blockedQueue[] = [
-                            'pid' => $process['pid'],
-                            'io_end' => $ioEnd,
-                            'remaining_burst' => $remainingBurst
-                        ];
-                    }
-                    
-                    $currentTime += $originalProcess['io_time'];
-                } else {
-                    $currentTime += $process['burst_time'];
-                }
-                
-                // Update results
-                if (!isset($results[$process['pid']])) {
-                    $results[$process['pid']] = [
-                        'pid' => $process['pid'],
-                        'waiting_time' => max(0, $currentTime - $originalProcess['arrival_time'] - $originalProcess['burst_time']),
-                        'turnaround_time' => $currentTime - $originalProcess['arrival_time'],
-                        'completion_time' => $currentTime,
-                        'start_time' => $currentTime - $process['burst_time'],
-                        'response_time' => $currentTime - $process['burst_time'] - $originalProcess['arrival_time'],
-                        'io_start' => $originalProcess['io_time'] > 0 ? $currentTime - $process['burst_time'] + $originalProcess['io_time'] : 0,
-                        'io_end' => $originalProcess['io_time'] > 0 ? $currentTime - $process['burst_time'] + $originalProcess['io_time'] + $originalProcess['io_burst_time'] : 0
-                    ];
-                }
-                
-                // Mark process as completed if no remaining burst time and not in blocked queue
-                if (!in_array($process['pid'], $completed) && 
-                    !in_array($process['pid'], array_column($blockedQueue, 'pid'))) {
-                    $completed[] = $process['pid'];
-                }
-            }
-            
-            return array_values($results);
+    // Hàm tính toán lập lịch theo thuật toán Shortest Job First
+    
+    $currentTime = 0; // Biến theo dõi thời gian hiện tại
+    $completed = []; // Mảng lưu các tiến trình đã hoàn thành
+    $results = []; // Mảng lưu kết quả tính toán
+    $readyQueue = []; // Hàng đợi sẵn sàng
+    $blockedQueue = []; // Hàng đợi bị chặn (đang thực hiện I/O)
+    
+    // Thêm bộ đếm an toàn để tránh vòng lặp vô hạn
+    $safetyCounter = 0;
+    $maxIterations = 1000; // Điều chỉnh dựa trên nhu cầu
+    
+    while (count($completed) < count($processes)) {
+        // Vòng lặp chính, chạy cho đến khi tất cả tiến trình hoàn thành
+        
+        $safetyCounter++;
+        if ($safetyCounter > $maxIterations) {
+            break; // Thoát khẩn cấp nếu vòng lặp chạy quá lâu
         }
         
-        function calculateSRTF($processes) {
-            $n = count($processes);
-            $rt = array_fill(0, $n, 0);
-            $ioTime = array_fill(0, $n, 0);
-            $ioStart = array_fill(0, $n, 0);
-            $complete = array_fill(0, $n, false);
-            $currentTime = 0;
-            $completed = 0;
-            $firstResponse = array_fill(0, $n, -1);
-            $blockedUntil = array_fill(0, $n, 0);
-            
-            // Khởi tạo remaining time
-            for ($i = 0; $i < $n; $i++) {
-                $rt[$i] = $processes[$i]['burst_time'];
-                $ioTime[$i] = $processes[$i]['io_time'];
-                if ($processes[$i]['io_time'] > 0) {
-                    $ioStart[$i] = $processes[$i]['io_time'];
-                }
-            }
-            
-            $results = array_fill(0, $n, [
-                'waiting_time' => 0,
-                'turnaround_time' => 0,
-                'completion_time' => 0,
-                'start_time' => -1,
-                'response_time' => 0,
-                'io_start' => 0,
-                'io_end' => 0
-            ]);
-            
-            while ($completed != $n) {
-                $shortest = -1;
-                $min = PHP_INT_MAX;
+        // Cập nhật hàng đợi sẵn sàng với các tiến trình đã đến
+        foreach ($processes as $process) {
+            // Kiểm tra các điều kiện để thêm tiến trình vào hàng đợi sẵn sàng:
+            // - Chưa hoàn thành
+            // - Đã đến thời điểm arrival time
+            // - Không có trong hàng đợi sẵn sàng
+            // - Không có trong hàng đợi bị chặn
+            if (!in_array($process['pid'], $completed) && 
+                $process['arrival_time'] <= $currentTime &&
+                !in_array($process['pid'], array_column($readyQueue, 'pid')) &&
+                !in_array($process['pid'], array_column($blockedQueue, 'pid'))) {
                 
-                for ($i = 0; $i < $n; $i++) {
-                    if ($processes[$i]['arrival_time'] <= $currentTime && !$complete[$i] && 
-                        $rt[$i] < $min && $currentTime >= $blockedUntil[$i]) {
-                        $min = $rt[$i];
-                        $shortest = $i;
+                // Tính thời gian burst còn lại
+                $remainingBurst = $process['burst_time'];
+                foreach ($results as $result) {
+                    if ($result['pid'] === $process['pid']) {
+                        $remainingBurst -= ($currentTime - $result['start_time']);
                     }
                 }
-                
-                if ($shortest == -1) {
-                    $currentTime++;
-                    continue;
+                if ($remainingBurst > 0) {
+                    $process['burst_time'] = $remainingBurst;
+                    $readyQueue[] = $process;
                 }
-                
-                // Ghi nhận thời gian đáp ứng đầu tiên
-                if ($firstResponse[$shortest] == -1) {
-                    $firstResponse[$shortest] = $currentTime;
-                    $results[$shortest]['response_time'] = $currentTime - $processes[$shortest]['arrival_time'];
-                }
-                
-                if ($results[$shortest]['start_time'] == -1) {
-                    $results[$shortest]['start_time'] = $currentTime;
-                }
-                
-                $rt[$shortest]--;
-                
-                // Kiểm tra I/O
-                if ($ioTime[$shortest] > 0 && $rt[$shortest] == $processes[$shortest]['burst_time'] - $ioStart[$shortest]) {
-                    $results[$shortest]['io_start'] = $currentTime + 1;
-                    $results[$shortest]['io_end'] = $currentTime + 1 + $processes[$shortest]['io_burst_time'];
-                    $blockedUntil[$shortest] = $results[$shortest]['io_end'];
-                }
-                
-                if ($rt[$shortest] == 0) {
-                    $complete[$shortest] = true;
-                    $completed++;
-                    
-                    $results[$shortest]['completion_time'] = $currentTime + 1;
-                    $results[$shortest]['turnaround_time'] = 
-                        $results[$shortest]['completion_time'] - 
-                        $processes[$shortest]['arrival_time'];
-                    $results[$shortest]['waiting_time'] = 
-                        $results[$shortest]['turnaround_time'] - 
-                        $processes[$shortest]['burst_time'];
-                    $results[$shortest]['pid'] = $processes[$shortest]['pid'];
-                }
-                
-                $currentTime++;
             }
-            
-            return array_values(array_filter($results, function($r) {
-                return isset($r['pid']);
-            }));
         }
         
-        function calculateRR($processes, $quantum) {
-            $n = count($processes);
-            $remaining_burst_time = array_column($processes, 'burst_time');
-            $completion_time = array_fill(0, $n, 0);
-            $waiting_time = array_fill(0, $n, 0);
-            $turnaround_time = array_fill(0, $n, 0);
-            $response_time = array_fill(0, $n, -1);
-            $current_time = 0;
-            $ready_queue = [];
-            $io_queue = [];
-            $completed = 0;
-            $timeline = [];
-        
-            // Tìm thời gian đến sớm nhất
-            $current_time = min(array_column($processes, 'arrival_time'));
-        
-            // Thêm các process đến đầu tiên vào ready queue
-            for ($i = 0; $i < $n; $i++) {
-                if ($processes[$i]['arrival_time'] <= $current_time) {
-                    $ready_queue[] = $i;
+        // Kiểm tra và cập nhật hàng đợi bị chặn
+        if (!empty($blockedQueue)) {
+            foreach ($blockedQueue as $key => $blocked) {
+                // Nếu tiến trình đã hoàn thành I/O, chuyển sang hàng đợi sẵn sàng
+                if ($currentTime >= $blocked['io_end']) {
+                    $readyQueue[] = [
+                        'pid' => $blocked['pid'],
+                        'burst_time' => $blocked['remaining_burst'],
+                        'arrival_time' => $blocked['io_end'],
+                        'io_time' => 0,
+                        'io_burst_time' => 0
+                    ];
+                    unset($blockedQueue[$key]);
                 }
             }
+            $blockedQueue = array_values($blockedQueue); // Sắp xếp lại chỉ số mảng
+        }
         
-            while ($completed < $n) {
-                if (empty($ready_queue)) {
-                    $current_time++;
-                    // Kiểm tra các process mới đến
-                    for ($i = 0; $i < $n; $i++) {
-                        if ($remaining_burst_time[$i] > 0 && 
-                            $processes[$i]['arrival_time'] <= $current_time && 
-                            !in_array($i, $ready_queue) &&
-                            !in_array($i, array_column($io_queue, 'pid'))) {
-                            $ready_queue[] = $i;
-                        }
-                    }
-                    continue;
-                }
+        // Nếu không có tiến trình trong hàng đợi sẵn sàng, tăng thời gian và tiếp tục
+        if (empty($readyQueue)) {
+            $currentTime++;
+            continue;
+        }
         
-                $current_process = array_shift($ready_queue);
-        
-                // Ghi nhận thời gian đáp ứng
-                if ($response_time[$current_process] == -1) {
-                    $response_time[$current_process] = $current_time - $processes[$current_process]['arrival_time'];
-                }
-        
-                // Tính toán thời gian thực thi trong quantum này
-                $execute_time = min($quantum, $remaining_burst_time[$current_process]);
-                $remaining_before_io = $processes[$current_process]['io_time'] - 
-                    ($processes[$current_process]['burst_time'] - $remaining_burst_time[$current_process]);
-        
-                // Xử lý I/O nếu cần
-                if ($processes[$current_process]['io_time'] > 0 && 
-                    $remaining_before_io > 0 && 
-                    $remaining_before_io <= $execute_time) {
-                    
-                    // Thực thi đến điểm I/O
-                    $execute_time = $remaining_before_io;
-                    $current_time += $execute_time;
-                    $remaining_burst_time[$current_process] -= $execute_time;
-        
-                    // Thêm vào hàng đợi I/O
-                    $io_queue[] = [
-                        'pid' => $current_process,
-                        'end_time' => $current_time + $processes[$current_process]['io_burst_time']
-                    ];
-        
-                    $timeline[] = [
-                        'pid' => $current_process,
-                        'start' => $current_time - $execute_time,
-                        'end' => $current_time,
-                        'type' => 'CPU'
-                    ];
-        
-                    $timeline[] = [
-                        'pid' => $current_process,
-                        'start' => $current_time,
-                        'end' => $current_time + $processes[$current_process]['io_burst_time'],
-                        'type' => 'IO'
-                    ];
-                } else {
-                    // Thực thi bình thường
-                    $current_time += $execute_time;
-                    $remaining_burst_time[$current_process] -= $execute_time;
-        
-                    $timeline[] = [
-                        'pid' => $current_process,
-                        'start' => $current_time - $execute_time,
-                        'end' => $current_time,
-                        'type' => 'CPU'
-                    ];
-                }
-        
-                // Kiểm tra các process hoàn thành I/O
-                foreach ($io_queue as $key => $io_process) {
-                    if ($current_time >= $io_process['end_time']) {
-                        if ($remaining_burst_time[$io_process['pid']] > 0) {
-                            $ready_queue[] = $io_process['pid'];
-                        }
-                        unset($io_queue[$key]);
-                    }
-                }
-                $io_queue = array_values($io_queue);
-        
-                // Thêm các process mới đến vào ready queue
-                for ($i = 0; $i < $n; $i++) {
-                    if ($remaining_burst_time[$i] > 0 && 
-                        $processes[$i]['arrival_time'] <= $current_time && 
-                        !in_array($i, $ready_queue) &&
-                        !in_array($i, array_column($io_queue, 'pid'))) {
-                        $ready_queue[] = $i;
-                    }
-                }
-        
-                // Xử lý process chưa hoàn thành
-                if ($remaining_burst_time[$current_process] > 0 && 
-                    !in_array($current_process, array_column($io_queue, 'pid'))) {
-                    $ready_queue[] = $current_process;
-                }
-        
-                // Kiểm tra hoàn thành
-                if ($remaining_burst_time[$current_process] == 0 && 
-                    !in_array($current_process, array_column($io_queue, 'pid'))) {
-                    $completion_time[$current_process] = $current_time;
-                    $turnaround_time[$current_process] = $completion_time[$current_process] - 
-                        $processes[$current_process]['arrival_time'];
-                    $waiting_time[$current_process] = $turnaround_time[$current_process] - 
-                        $processes[$current_process]['burst_time'];
-                    $completed++;
-                }
+        // Sắp xếp theo thời gian burst (logic SJF)
+        usort($readyQueue, function($a, $b) {
+            if ($a['burst_time'] == $b['burst_time']) {
+                return $a['arrival_time'] - $b['arrival_time']; // Sắp xếp phụ theo thời gian đến
             }
+            return $a['burst_time'] - $b['burst_time'];
+        });
         
-            // Tạo kết quả
-            $results = [];
-            for ($i = 0; $i < $n; $i++) {
-                $results[] = [
-                    'pid' => $processes[$i]['pid'],
-                    'completion_time' => $completion_time[$i],
-                    'turnaround_time' => $turnaround_time[$i],
-                    'waiting_time' => $waiting_time[$i],
-                    'response_time' => $response_time[$i],
-                    'start_time' => min(array_filter($timeline, function($t) use ($i) {
-                        return $t['pid'] == $i;
-                    }))['start'] ?? 0,
-                    'io_start' => current(array_filter($timeline, function($t) use ($i) {
-                        return $t['pid'] == $i && $t['type'] == 'IO';
-                    }))['start'] ?? 0,
-                    'io_end' => current(array_filter($timeline, function($t) use ($i) {
-                        return $t['pid'] == $i && $t['type'] == 'IO';
-                    }))['end'] ?? 0
+        $process = array_shift($readyQueue); // Lấy tiến trình đầu tiên từ hàng đợi
+        $originalProcess = null;
+        // Tìm thông tin gốc của tiến trình
+        foreach ($processes as $p) {
+            if ($p['pid'] === $process['pid']) {
+                $originalProcess = $p;
+                break;
+            }
+        }
+        
+        // Xử lý I/O
+        if ($originalProcess['io_time'] > 0 && 
+            $originalProcess['io_burst_time'] > 0 && 
+            !in_array($process['pid'], $completed)) {
+            
+            // Tính thời gian bắt đầu và kết thúc I/O
+            $ioStart = $currentTime + $originalProcess['io_time'];
+            $ioEnd = $ioStart + $originalProcess['io_burst_time'];
+            $remainingBurst = $originalProcess['burst_time'] - $originalProcess['io_time'];
+            
+            // Nếu còn thời gian xử lý, thêm vào hàng đợi bị chặn
+            if ($remainingBurst > 0) {
+                $blockedQueue[] = [
+                    'pid' => $process['pid'],
+                    'io_end' => $ioEnd,
+                    'remaining_burst' => $remainingBurst
                 ];
             }
-        
-            return $results;
+            
+            $currentTime += $originalProcess['io_time'];
+        } else {
+            $currentTime += $process['burst_time'];
         }
+        
+        // Cập nhật kết quả cho tiến trình
+        if (!isset($results[$process['pid']])) {
+            $results[$process['pid']] = [
+                'pid' => $process['pid'],
+                'waiting_time' => max(0, $currentTime - $originalProcess['arrival_time'] - $originalProcess['burst_time']),
+                'turnaround_time' => $currentTime - $originalProcess['arrival_time'],
+                'completion_time' => $currentTime,
+                'start_time' => $currentTime - $process['burst_time'],
+                'response_time' => $currentTime - $process['burst_time'] - $originalProcess['arrival_time'],
+                'io_start' => $originalProcess['io_time'] > 0 ? $currentTime - $process['burst_time'] + $originalProcess['io_time'] : 0,
+                'io_end' => $originalProcess['io_time'] > 0 ? $currentTime - $process['burst_time'] + $originalProcess['io_time'] + $originalProcess['io_burst_time'] : 0
+            ];
+        }
+        
+        // Đánh dấu tiến trình đã hoàn thành nếu không còn thời gian xử lý và không trong hàng đợi bị chặn
+        if (!in_array($process['pid'], $completed) && 
+            !in_array($process['pid'], array_column($blockedQueue, 'pid'))) {
+            $completed[] = $process['pid'];
+        }
+    }
+    
+    return array_values($results); // Trả về mảng kết quả
+}
+        function calculateSRTF($processes) {
+    $n = count($processes);
+    $rt = array_fill(0, $n, 0);
+    $ioTime = array_fill(0, $n, 0);
+    $ioStart = array_fill(0, $n, 0);
+    $complete = array_fill(0, $n, false);
+    $currentTime = 0;
+    $completed = 0;
+    $firstResponse = array_fill(0, $n, -1);
+    $blockedUntil = array_fill(0, $n, 0);
+    
+    // Khởi tạo remaining time
+    for ($i = 0; $i < $n; $i++) {
+        $rt[$i] = $processes[$i]['burst_time'];
+        $ioTime[$i] = $processes[$i]['io_time'];
+        if ($processes[$i]['io_time'] > 0) {
+            $ioStart[$i] = $processes[$i]['io_time'];
+        }
+    }
+    
+    $results = array_fill(0, $n, [
+        'waiting_time' => 0,
+        'turnaround_time' => 0,
+        'completion_time' => 0,
+        'start_time' => -1,
+        'response_time' => 0,
+        'io_start' => 0,
+        'io_end' => 0
+    ]);
+    
+    while ($completed != $n) {
+        $shortest = -1;
+        $min = PHP_INT_MAX;
+        
+        for ($i = 0; $i < $n; $i++) {
+            if ($processes[$i]['arrival_time'] <= $currentTime && !$complete[$i] && 
+                $rt[$i] < $min && $currentTime >= $blockedUntil[$i]) {
+                $min = $rt[$i];
+                $shortest = $i;
+            }
+        }
+        
+        if ($shortest == -1) {
+            $currentTime++;
+            continue;
+        }
+        
+        // Ghi nhận thời gian đáp ứng đầu tiên
+        if ($firstResponse[$shortest] == -1) {
+            $firstResponse[$shortest] = $currentTime;
+            $results[$shortest]['response_time'] = $currentTime - $processes[$shortest]['arrival_time'];
+        }
+        
+        if ($results[$shortest]['start_time'] == -1) {
+            $results[$shortest]['start_time'] = $currentTime;
+        }
+        
+        $rt[$shortest]--;
+        
+        // Kiểm tra I/O
+        if ($ioTime[$shortest] > 0 && $rt[$shortest] == $processes[$shortest]['burst_time'] - $ioStart[$shortest]) {
+            $results[$shortest]['io_start'] = $currentTime + 1;
+            $results[$shortest]['io_end'] = $currentTime + 1 + $processes[$shortest]['io_burst_time'];
+            $blockedUntil[$shortest] = $results[$shortest]['io_end'];
+        }
+        
+        if ($rt[$shortest] == 0) {
+            $complete[$shortest] = true;
+            $completed++;
+            
+            $results[$shortest]['completion_time'] = $currentTime + 1;
+            $results[$shortest]['turnaround_time'] = 
+                $results[$shortest]['completion_time'] - 
+                $processes[$shortest]['arrival_time'];
+            $results[$shortest]['waiting_time'] = 
+                $results[$shortest]['turnaround_time'] - 
+                $processes[$shortest]['burst_time'];
+            $results[$shortest]['pid'] = $processes[$shortest]['pid'];
+        }
+        
+        $currentTime++;
+    }
+    
+    return array_values(array_filter($results, function($r) {
+        return isset($r['pid']);
+    }));
+}
+        
+        function calculateRR($processes, $quantum) {
+    // Số lượng process
+    $n = count($processes);
+    
+    // Khởi tạo các mảng để theo dõi thời gian burst còn lại, thời gian hoàn thành, thời gian chờ, thời gian quay vòng, và thời gian đáp ứng
+    $remaining_burst_time = array_column($processes, 'burst_time'); // Lấy giá trị burst_time từ danh sách processes
+    $completion_time = array_fill(0, $n, 0); // Thời gian hoàn thành của từng process
+    $waiting_time = array_fill(0, $n, 0); // Thời gian chờ của từng process
+    $turnaround_time = array_fill(0, $n, 0); // Thời gian quay vòng của từng process
+    $response_time = array_fill(0, $n, -1); // Thời gian đáp ứng, ban đầu đặt là -1 (chưa được đáp ứng)
+    
+    // Khởi tạo thời gian hiện tại, hàng đợi ready queue, hàng đợi I/O, và số lượng process đã hoàn thành
+    $current_time = 0;
+    $ready_queue = []; // Hàng đợi các process sẵn sàng
+    $io_queue = []; // Hàng đợi các process đang thực hiện I/O
+    $completed = 0; // Số lượng process đã hoàn thành
+    $timeline = []; // Dòng thời gian cho các sự kiện
+    
+    // Tìm thời gian đến nhỏ nhất (process đến sớm nhất)
+    $current_time = min(array_column($processes, 'arrival_time'));
+    
+    // Thêm các process đến đầu tiên vào hàng đợi ready queue
+    for ($i = 0; $i < $n; $i++) {
+        if ($processes[$i]['arrival_time'] <= $current_time) {
+            $ready_queue[] = $i; // Thêm process có thời gian đến nhỏ hơn hoặc bằng thời gian hiện tại vào hàng đợi
+        }
+    }
+    
+    // Vòng lặp xử lý đến khi tất cả process hoàn thành
+    while ($completed < $n) {
+        // Nếu hàng đợi ready queue rỗng
+        if (empty($ready_queue)) {
+            $current_time++; // Tăng thời gian hiện tại
+            // Kiểm tra các process mới đến trong thời gian này
+            for ($i = 0; $i < $n; $i++) {
+                if ($remaining_burst_time[$i] > 0 && 
+                    $processes[$i]['arrival_time'] <= $current_time && 
+                    !in_array($i, $ready_queue) &&
+                    !in_array($i, array_column($io_queue, 'pid'))) {
+                    $ready_queue[] = $i; // Thêm process mới đến vào hàng đợi ready queue
+                }
+            }
+            continue; // Tiếp tục vòng lặp
+        }
+        
+        // Lấy process đầu tiên trong hàng đợi ready queue
+        $current_process = array_shift($ready_queue);
+        
+        // Ghi nhận thời gian đáp ứng nếu chưa được ghi nhận
+        if ($response_time[$current_process] == -1) {
+            $response_time[$current_process] = $current_time - $processes[$current_process]['arrival_time'];
+        }
+        
+        // Tính toán thời gian thực thi trong quantum hiện tại
+        $execute_time = min($quantum, $remaining_burst_time[$current_process]);
+        $remaining_before_io = $processes[$current_process]['io_time'] - 
+            ($processes[$current_process]['burst_time'] - $remaining_burst_time[$current_process]);
+        
+        // Xử lý I/O nếu cần thiết
+        if ($processes[$current_process]['io_time'] > 0 && 
+            $remaining_before_io > 0 && 
+            $remaining_before_io <= $execute_time) {
+            
+            // Thực thi đến thời điểm cần I/O
+            $execute_time = $remaining_before_io;
+            $current_time += $execute_time;
+            $remaining_burst_time[$current_process] -= $execute_time;
+            
+            // Thêm process vào hàng đợi I/O
+            $io_queue[] = [
+                'pid' => $current_process,
+                'end_time' => $current_time + $processes[$current_process]['io_burst_time']
+            ];
+            
+            // Cập nhật dòng thời gian (timeline)
+            $timeline[] = [
+                'pid' => $current_process,
+                'start' => $current_time - $execute_time,
+                'end' => $current_time,
+                'type' => 'CPU'
+            ];
+            
+            $timeline[] = [
+                'pid' => $current_process,
+                'start' => $current_time,
+                'end' => $current_time + $processes[$current_process]['io_burst_time'],
+                'type' => 'IO'
+            ];
+        } else {
+            // Thực thi bình thường trong quantum
+            $current_time += $execute_time;
+            $remaining_burst_time[$current_process] -= $execute_time;
+            
+            // Cập nhật dòng thời gian (timeline)
+            $timeline[] = [
+                'pid' => $current_process,
+                'start' => $current_time - $execute_time,
+                'end' => $current_time,
+                'type' => 'CPU'
+            ];
+        }
+        
+        // Kiểm tra các process đã hoàn thành I/O
+        foreach ($io_queue as $key => $io_process) {
+            if ($current_time >= $io_process['end_time']) {
+                if ($remaining_burst_time[$io_process['pid']] > 0) {
+                    $ready_queue[] = $io_process['pid']; // Thêm process đã hoàn thành I/O vào hàng đợi ready queue
+                }
+                unset($io_queue[$key]); // Loại bỏ process khỏi hàng đợi I/O
+            }
+        }
+        $io_queue = array_values($io_queue); // Sắp xếp lại chỉ số của hàng đợi I/O
+        
+        // Thêm các process mới đến vào hàng đợi ready queue
+        for ($i = 0; $i < $n; $i++) {
+            if ($remaining_burst_time[$i] > 0 && 
+                $processes[$i]['arrival_time'] <= $current_time && 
+                !in_array($i, $ready_queue) &&
+                !in_array($i, array_column($io_queue, 'pid'))) {
+                $ready_queue[] = $i;
+            }
+        }
+        
+        // Nếu process chưa hoàn thành, thêm lại vào hàng đợi ready queue
+        if ($remaining_burst_time[$current_process] > 0 && 
+            !in_array($current_process, array_column($io_queue, 'pid'))) {
+            $ready_queue[] = $current_process;
+        }
+        
+        // Kiểm tra nếu process đã hoàn thành
+        if ($remaining_burst_time[$current_process] == 0 && 
+            !in_array($current_process, array_column($io_queue, 'pid'))) {
+            $completion_time[$current_process] = $current_time;
+            $turnaround_time[$current_process] = $completion_time[$current_process] - 
+                $processes[$current_process]['arrival_time'];
+            $waiting_time[$current_process] = $turnaround_time[$current_process] - 
+                $processes[$current_process]['burst_time'];
+            $completed++; // Tăng số lượng process hoàn thành
+        }
+    }
+    
+    // Tạo kết quả trả về
+    $results = [];
+    for ($i = 0; $i < $n; $i++) {
+        $results[] = [
+            'pid' => $processes[$i]['pid'],
+            'completion_time' => $completion_time[$i],
+            'turnaround_time' => $turnaround_time[$i],
+            'waiting_time' => $waiting_time[$i],
+            'response_time' => $response_time[$i],
+            'start_time' => min(array_filter($timeline, function($t) use ($i) {
+                return $t['pid'] == $i;
+            }))['start'] ?? 0,
+            'io_start' => current(array_filter($timeline, function($t) use ($i) {
+                return $t['pid'] == $i && $t['type'] == 'IO';
+            }))['start'] ?? 0,
+            'io_end' => current(array_filter($timeline, function($t) use ($i) {
+                return $t['pid'] == $i && $t['type'] == 'IO';
+            }))['end'] ?? 0
+        ];
+    }
+    
+    return $results; // Trả về kết quả cuối cùng
+}
+
         
         
         function displayResults($results) {
