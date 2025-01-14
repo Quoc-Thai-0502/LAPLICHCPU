@@ -307,10 +307,10 @@
         function calculateSJF($processes) {
     // Hàm tính toán lập lịch theo thuật toán Shortest Job First
     
-    $currentTime = 0; // Biến theo dõi thời gian hiện tại
-    $completed = []; // Mảng lưu các tiến trình đã hoàn thành
-    $results = []; // Mảng lưu kết quả tính toán
-    $readyQueue = []; // Hàng đợi sẵn sàng
+    $currentTime = 0;   // Biến theo dõi thời gian hiện tại
+    $completed = [];    // Mảng lưu các tiến trình đã hoàn thành
+    $results = [];      // Mảng lưu kết quả tính toán
+    $readyQueue = [];   // Hàng đợi sẵn sàng
     $blockedQueue = []; // Hàng đợi bị chặn (đang thực hiện I/O)
     
     // Thêm bộ đếm an toàn để tránh vòng lặp vô hạn
@@ -440,93 +440,101 @@
     
     return array_values($results); // Trả về mảng kết quả
 }
-        function calculateSRTF($processes) {
-    $n = count($processes);
-    $rt = array_fill(0, $n, 0);
-    $ioTime = array_fill(0, $n, 0);
-    $ioStart = array_fill(0, $n, 0);
-    $complete = array_fill(0, $n, false);
-    $currentTime = 0;
-    $completed = 0;
-    $firstResponse = array_fill(0, $n, -1);
-    $blockedUntil = array_fill(0, $n, 0);
-    
-    // Khởi tạo remaining time
+function calculateSRTF($processes) {
+    $n = count($processes); // Số lượng process
+    $rt = array_fill(0, $n, 0); // Mảng lưu thời gian thực thi còn lại của các process
+    $ioTime = array_fill(0, $n, 0); // Mảng lưu thời gian I/O của các process
+    $ioStart = array_fill(0, $n, 0); // Mảng lưu thời gian bắt đầu I/O của các process
+    $complete = array_fill(0, $n, false); // Mảng đánh dấu process đã hoàn thành hay chưa
+    $currentTime = 0; // Thời gian hiện tại
+    $completed = 0; // Số lượng process đã hoàn thành
+    $firstResponse = array_fill(0, $n, -1); // Mảng lưu thời gian đáp ứng đầu tiên của từng process
+    $blockedUntil = array_fill(0, $n, 0); // Mảng lưu thời gian mà process bị chặn do I/O
+
+    // Khởi tạo thời gian thực thi còn lại và thời gian I/O cho từng process
     for ($i = 0; $i < $n; $i++) {
-        $rt[$i] = $processes[$i]['burst_time'];
-        $ioTime[$i] = $processes[$i]['io_time'];
+        $rt[$i] = $processes[$i]['burst_time']; // Gán thời gian thực thi còn lại ban đầu bằng burst_time
+        $ioTime[$i] = $processes[$i]['io_time']; // Gán thời gian I/O
         if ($processes[$i]['io_time'] > 0) {
-            $ioStart[$i] = $processes[$i]['io_time'];
+            $ioStart[$i] = $processes[$i]['io_time']; // Gán thời gian bắt đầu I/O
         }
     }
-    
+
+    // Tạo mảng kết quả để lưu các thông tin quan trọng của từng process
     $results = array_fill(0, $n, [
-        'waiting_time' => 0,
-        'turnaround_time' => 0,
-        'completion_time' => 0,
-        'start_time' => -1,
-        'response_time' => 0,
-        'io_start' => 0,
-        'io_end' => 0
+        'waiting_time' => 0, // Thời gian chờ
+        'turnaround_time' => 0, // Thời gian quay vòng
+        'completion_time' => 0, // Thời gian hoàn thành
+        'start_time' => -1, // Thời gian bắt đầu
+        'response_time' => 0, // Thời gian đáp ứng
+        'io_start' => 0, // Thời gian bắt đầu I/O
+        'io_end' => 0 // Thời gian kết thúc I/O
     ]);
-    
+
+    // Vòng lặp chính, tiếp tục cho đến khi tất cả các process hoàn thành
     while ($completed != $n) {
-        $shortest = -1;
-        $min = PHP_INT_MAX;
-        
+        $shortest = -1; // Lưu ID của process có thời gian thực thi còn lại ngắn nhất
+        $min = PHP_INT_MAX; // Lưu giá trị nhỏ nhất để so sánh thời gian thực thi còn lại
+
+        // Duyệt qua các process để tìm process có thời gian thực thi ngắn nhất tại thời điểm hiện tại
         for ($i = 0; $i < $n; $i++) {
             if ($processes[$i]['arrival_time'] <= $currentTime && !$complete[$i] && 
                 $rt[$i] < $min && $currentTime >= $blockedUntil[$i]) {
-                $min = $rt[$i];
-                $shortest = $i;
+                $min = $rt[$i]; // Cập nhật thời gian thực thi ngắn nhất
+                $shortest = $i; // Cập nhật ID của process tương ứng
             }
         }
-        
+
+        // Nếu không tìm thấy process nào, tăng thời gian hiện tại và tiếp tục
         if ($shortest == -1) {
             $currentTime++;
             continue;
         }
-        
-        // Ghi nhận thời gian đáp ứng đầu tiên
+
+        // Ghi nhận thời gian đáp ứng đầu tiên nếu chưa được ghi nhận
         if ($firstResponse[$shortest] == -1) {
             $firstResponse[$shortest] = $currentTime;
             $results[$shortest]['response_time'] = $currentTime - $processes[$shortest]['arrival_time'];
         }
-        
+
+        // Ghi nhận thời gian bắt đầu nếu chưa được ghi nhận
         if ($results[$shortest]['start_time'] == -1) {
             $results[$shortest]['start_time'] = $currentTime;
         }
-        
-        $rt[$shortest]--;
-        
-        // Kiểm tra I/O
+
+        $rt[$shortest]--; // Giảm thời gian thực thi còn lại của process
+
+        // Kiểm tra nếu cần thực hiện I/O
         if ($ioTime[$shortest] > 0 && $rt[$shortest] == $processes[$shortest]['burst_time'] - $ioStart[$shortest]) {
-            $results[$shortest]['io_start'] = $currentTime + 1;
-            $results[$shortest]['io_end'] = $currentTime + 1 + $processes[$shortest]['io_burst_time'];
-            $blockedUntil[$shortest] = $results[$shortest]['io_end'];
+            $results[$shortest]['io_start'] = $currentTime + 1; // Ghi nhận thời gian bắt đầu I/O
+            $results[$shortest]['io_end'] = $currentTime + 1 + $processes[$shortest]['io_burst_time']; // Ghi nhận thời gian kết thúc I/O
+            $blockedUntil[$shortest] = $results[$shortest]['io_end']; // Cập nhật thời gian bị chặn do I/O
         }
-        
+
+        // Nếu process hoàn thành
         if ($rt[$shortest] == 0) {
-            $complete[$shortest] = true;
-            $completed++;
-            
-            $results[$shortest]['completion_time'] = $currentTime + 1;
+            $complete[$shortest] = true; // Đánh dấu process đã hoàn thành
+            $completed++; // Tăng số lượng process đã hoàn thành
+
+            $results[$shortest]['completion_time'] = $currentTime + 1; // Ghi nhận thời gian hoàn thành
             $results[$shortest]['turnaround_time'] = 
                 $results[$shortest]['completion_time'] - 
-                $processes[$shortest]['arrival_time'];
+                $processes[$shortest]['arrival_time']; // Tính thời gian quay vòng
             $results[$shortest]['waiting_time'] = 
                 $results[$shortest]['turnaround_time'] - 
-                $processes[$shortest]['burst_time'];
-            $results[$shortest]['pid'] = $processes[$shortest]['pid'];
+                $processes[$shortest]['burst_time']; // Tính thời gian chờ
+            $results[$shortest]['pid'] = $processes[$shortest]['pid']; // Ghi nhận ID của process
         }
-        
-        $currentTime++;
+
+        $currentTime++; // Tăng thời gian hiện tại
     }
-    
+
+    // Trả về kết quả chỉ chứa các process đã được xử lý
     return array_values(array_filter($results, function($r) {
         return isset($r['pid']);
     }));
 }
+
         
         function calculateRR($processes, $quantum) {
     // Số lượng process
